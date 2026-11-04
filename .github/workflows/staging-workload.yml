@@ -30,7 +30,6 @@ jobs:
       contents: read
       id-token: write
     env:
-      SCOPEDB_HOME: ${{ runner.temp }}/scopedb
       SCOPEDB_CONTROL_URL: ${{ vars.SCOPEDB_CONTROL_URL }}
       SCOPEDB_WORKSPACE_ID: ${{ vars.SCOPEDB_WORKSPACE_ID }}
     steps:
@@ -44,6 +43,9 @@ jobs:
 
       - name: Build scope
         run: mise run build
+
+      - name: Configure ScopeDB home
+        run: echo "SCOPEDB_HOME=$RUNNER_TEMP/scopedb" >> "$GITHUB_ENV"
 
       - name: Log in with workload identity
         run: ./bin/scope auth login --workload-identity --workspace "$SCOPEDB_WORKSPACE_ID" --insecure-storage
