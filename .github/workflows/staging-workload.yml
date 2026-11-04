@@ -16,6 +16,8 @@ name: Staging workload identity
 
 on:
   workflow_dispatch:
+  push:
+    branches: [ test/workload-identity-staging ]
 
 permissions:
   contents: read
