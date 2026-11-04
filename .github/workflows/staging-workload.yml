@@ -51,7 +51,9 @@ jobs:
 
   branch:
     name: Workload identity login (branch context)
-    if: github.ref_type == 'branch'
+    # ref_type is also 'branch' for pull_request merge refs, where every job token
+    # carries :pull_request; only push/dispatch produce a real branch subject.
+    if: github.ref_type == 'branch' && github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
