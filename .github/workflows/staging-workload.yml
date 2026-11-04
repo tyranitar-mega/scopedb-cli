@@ -1,0 +1,75 @@
+# Copyright 2026 ScopeDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Staging workload identity
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ test/workload-identity-staging ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # The token subject is :environment:production, for which no Console policy
+  # exists, so the exchange is expected to be rejected with a 401.
+  production:
+    name: Workload identity login (production environment)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_CONTROL_URL: https://console.scopedb.cloud
+      SCOPEDB_WORKSPACE_ID: 6ef0e720a1e3
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
+
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
+
+  # The token subject is :environment:staging, which matches the workload
+  # identity policy in the Console, so the exchange succeeds.
+  staging:
+    name: Workload identity login (staging environment)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_CONTROL_URL: https://console.scopedb.cloud
+      SCOPEDB_WORKSPACE_ID: 6ef0e720a1e3
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
+
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
