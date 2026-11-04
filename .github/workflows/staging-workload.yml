@@ -1,0 +1,54 @@
+# Copyright 2026 ScopeDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Staging workload identity
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  workload-login:
+    name: Workload identity login on staging
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_HOME: ${{ runner.temp }}/scopedb
+      SCOPEDB_CONTROL_URL: ${{ vars.SCOPEDB_CONTROL_URL }}
+      SCOPEDB_WORKSPACE_ID: ${{ vars.SCOPEDB_WORKSPACE_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
+
+      - name: Build scope
+        run: mise run build
+
+      - name: Log in with workload identity
+        run: ./bin/scope auth login --workload-identity --workspace "$SCOPEDB_WORKSPACE_ID" --insecure-storage
+
+      - name: Verify data-plane access
+        run: |
+          ./bin/scope catalog list
+          ./bin/scope query 'SELECT 1 AS ready'
