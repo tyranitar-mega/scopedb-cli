@@ -1,0 +1,51 @@
+# Copyright 2026 ScopeDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Verify staging workload identity
+description: Build scope, exchange the job's OIDC token on staging, and run data-plane checks.
+
+runs:
+  using: composite
+  steps:
+    - name: Configure ScopeDB home
+      shell: bash
+      run: echo "SCOPEDB_HOME=$RUNNER_TEMP/scopedb" >> "$GITHUB_ENV"
+
+    - name: Build scope
+      shell: bash
+      run: mise run build
+
+    - name: Print OIDC claims
+      shell: bash
+      run: |
+        echo "SCOPEDB_CONTROL_URL=$SCOPEDB_CONTROL_URL"
+        echo "SCOPEDB_WORKSPACE_ID=$SCOPEDB_WORKSPACE_ID"
+        token="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$SCOPEDB_CONTROL_URL" | jq -r .value)"
+        python3 -c 'import sys, base64, json
+        payload = sys.argv[1].split(".")[1]
+        payload += "=" * (-len(payload) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(payload))
+        keep = ("iss", "aud", "sub", "ref", "environment", "repository", "actor")
+        print(json.dumps({k: claims[k] for k in keep if k in claims}, indent=2))' "$token"
+
+    - name: Log in with workload identity
+      shell: bash
+      run: ./bin/scope auth login --workload-identity --workspace "$SCOPEDB_WORKSPACE_ID" --insecure-storage
+
+    - name: Verify data-plane access
+      shell: bash
+      run: |
+        ./bin/scope catalog list databases
+        ./bin/scope query 'SELECT 1 AS ready'

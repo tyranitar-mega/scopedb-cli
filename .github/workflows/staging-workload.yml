@@ -18,13 +18,16 @@ on:
   workflow_dispatch:
   push:
     branches: [ test/workload-identity-staging ]
+    tags: [ 'ci-*' ]
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  workload-login:
-    name: Workload identity login on staging
+  environment:
+    name: Workload identity login (environment context)
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: production
@@ -43,29 +46,74 @@ jobs:
       - name: Setup Go cache
         uses: ./.github/actions/setup-go-cache
 
-      - name: Build scope
-        run: mise run build
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
 
-      - name: Configure ScopeDB home
-        run: echo "SCOPEDB_HOME=$RUNNER_TEMP/scopedb" >> "$GITHUB_ENV"
+  branch:
+    name: Workload identity login (branch context)
+    if: github.ref_type == 'branch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_CONTROL_URL: ${{ vars.SCOPEDB_CONTROL_URL }}
+      SCOPEDB_WORKSPACE_ID: ${{ vars.SCOPEDB_WORKSPACE_ID }}
+    steps:
+      - uses: actions/checkout@v7
 
-      - name: Print OIDC claims
-        run: |
-          echo "SCOPEDB_CONTROL_URL=$SCOPEDB_CONTROL_URL"
-          echo "SCOPEDB_WORKSPACE_ID=$SCOPEDB_WORKSPACE_ID"
-          token="$(curl -fsSL -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$SCOPEDB_CONTROL_URL" | jq -r .value)"
-          python3 -c 'import sys, base64, json
-          payload = sys.argv[1].split(".")[1]
-          payload += "=" * (-len(payload) % 4)
-          claims = json.loads(base64.urlsafe_b64decode(payload))
-          keep = ("iss", "aud", "sub", "ref", "environment", "repository", "actor")
-          print(json.dumps({k: claims[k] for k in keep if k in claims}, indent=2))' "$token"
+      - name: Setup mise
+        uses: jdx/mise-action@v4
 
-      - name: Log in with workload identity
-        run: ./bin/scope auth login --workload-identity --workspace "$SCOPEDB_WORKSPACE_ID" --insecure-storage
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
 
-      - name: Verify data-plane access
-        run: |
-          ./bin/scope catalog list databases
-          ./bin/scope query 'SELECT 1 AS ready'
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
+
+  tag:
+    name: Workload identity login (tag context)
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_CONTROL_URL: ${{ vars.SCOPEDB_CONTROL_URL }}
+      SCOPEDB_WORKSPACE_ID: ${{ vars.SCOPEDB_WORKSPACE_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
+
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
+
+  pull-request:
+    name: Workload identity login (pull request context)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SCOPEDB_CONTROL_URL: ${{ vars.SCOPEDB_CONTROL_URL }}
+      SCOPEDB_WORKSPACE_ID: ${{ vars.SCOPEDB_WORKSPACE_ID }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup mise
+        uses: jdx/mise-action@v4
+
+      - name: Setup Go cache
+        uses: ./.github/actions/setup-go-cache
+
+      - name: Verify workload identity
+        uses: ./.github/actions/staging-workload-verify
