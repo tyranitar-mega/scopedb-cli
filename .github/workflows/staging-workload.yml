@@ -67,5 +67,5 @@ jobs:
 
       - name: Verify data-plane access
         run: |
-          ./bin/scope catalog list
+          ./bin/scope catalog list databases
           ./bin/scope query 'SELECT 1 AS ready'
