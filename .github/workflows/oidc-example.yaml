@@ -1,0 +1,119 @@
+# Copyright 2026 ScopeDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Dogfoods OIDC sign-in for data commands through scopedb/login-action. The
+# staging job's subject (repo:tyranitar-mega/scopedb-cli:environment:staging)
+# must have a matching OpenID Connect trust policy in the workspace's Console
+# settings, so its commands must succeed. The production subject deliberately
+# has none, so its commands must be rejected. Every step prints the command's
+# exit code, and doctor steps never fail the workflow: they report the code and
+# the check table for inspection.
+name: OIDC example
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  staging:
+    name: OIDC sign-in succeeds (staging)
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build scope
+        run: go build -o "$RUNNER_TEMP/scope" ./cmd/scope
+
+      - uses: scopedb/login-action@v1
+        with:
+          workspace-id: "6ef0e720a1e3"
+
+      - name: Query
+        run: |
+          set +e
+          "$RUNNER_TEMP/scope" query 'SELECT 1 AS ready'
+          code=$?
+          echo "scope query exit code: $code"
+          exit "$code"
+
+      - name: List databases
+        run: |
+          set +e
+          "$RUNNER_TEMP/scope" catalog list databases
+          code=$?
+          echo "scope catalog list databases exit code: $code"
+          exit "$code"
+
+      - name: Doctor
+        run: |
+          set +e
+          "$RUNNER_TEMP/scope" doctor
+          code=$?
+          echo "scope doctor exit code: $code"
+
+  production:
+    name: OIDC sign-in rejected (production)
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Build scope
+        run: go build -o "$RUNNER_TEMP/scope" ./cmd/scope
+
+      - uses: scopedb/login-action@v1
+        with:
+          workspace-id: "6ef0e720a1e3"
+
+      - name: Query must fail
+        run: |
+          output=$("$RUNNER_TEMP/scope" query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
+          echo "$output"
+          echo "scope query exit code: $code"
+          if [[ $code -eq 0 ]]; then
+            echo "::error::scope query succeeded but must be rejected"
+            exit 1
+          fi
+
+      - name: List databases must fail
+        run: |
+          output=$("$RUNNER_TEMP/scope" catalog list databases 2>&1) && code=0 || code=$?
+          echo "$output"
+          echo "scope catalog list databases exit code: $code"
+          if [[ $code -eq 0 ]]; then
+            echo "::error::scope catalog list databases succeeded but must be rejected"
+            exit 1
+          fi
+
+      - name: Doctor
+        run: |
+          set +e
+          "$RUNNER_TEMP/scope" doctor
+          code=$?
+          echo "scope doctor exit code: $code"
