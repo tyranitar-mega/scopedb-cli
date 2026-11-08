@@ -16,8 +16,9 @@
 # staging job's subject (repo:tyranitar-mega/scopedb-cli:environment:staging)
 # must have a matching OpenID Connect trust policy in the workspace's Console
 # settings, so its commands must succeed. The production subject deliberately
-# has none, so its commands must be rejected; the steps assert exit code 3 so
-# only the trust-policy rejection counts, not any other failure. Every step
+# has none, so its commands must be rejected; the steps assert exit code 3 and
+# the "OIDC token was rejected" message, so only the trust-policy rejection
+# counts, not any other failure. Every step
 # prints the command's exit code, and doctor steps never fail the workflow:
 # they report the code and the check table for inspection. Because pull_request
 # runs grant id-token: write, the staging and production GitHub environments
@@ -41,7 +42,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -93,7 +94,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
 
@@ -119,8 +120,9 @@ jobs:
           output=$(scope query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope query exit code: $code"
-          if [[ $code -ne 3 ]]; then
-            echo "::error::scope query must exit 3 (OIDC token rejected), got $code"
+          # Exit code 3 also covers "not logged in", so the message proves the OIDC path ran and was rejected.
+          if [[ $code -ne 3 ]] || ! grep -q "the OIDC token was rejected" <<< "$output"; then
+            echo "::error::scope query must exit 3 with an OIDC rejection, got $code"
             exit 1
           fi
 
@@ -129,8 +131,8 @@ jobs:
           output=$(scope catalog list databases 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope catalog list databases exit code: $code"
-          if [[ $code -ne 3 ]]; then
-            echo "::error::scope catalog list databases must exit 3 (OIDC token rejected), got $code"
+          if [[ $code -ne 3 ]] || ! grep -q "the OIDC token was rejected" <<< "$output"; then
+            echo "::error::scope catalog list databases must exit 3 with an OIDC rejection, got $code"
             exit 1
           fi
 
