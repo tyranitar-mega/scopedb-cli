@@ -42,8 +42,18 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build scope
-        run: go build -o "$RUNNER_TEMP/scope" ./cmd/scope
+      - name: Install scope v0.3.0
+        run: |
+          set -euo pipefail
+          if curl -fsSL "https://github.com/scopedb/scopedb-cli/releases/download/v0.3.0/scope_0.3.0_linux_amd64.tar.gz" | tar -xz -C "$RUNNER_TEMP"; then
+            echo "Installed scope from the v0.3.0 release archive."
+          else
+            echo "The v0.3.0 release archive is not published yet; building from the v0.3.0 tag."
+            git clone --depth 1 --branch v0.3.0 https://github.com/scopedb/scopedb-cli "$RUNNER_TEMP/scopedb-cli"
+            (cd "$RUNNER_TEMP/scopedb-cli" && go build -o "$RUNNER_TEMP/scope" ./cmd/scope)
+          fi
+          sudo install -m 0755 "$RUNNER_TEMP/scope" /usr/local/bin/scope
+          scope version
 
       - uses: scopedb/login-action@v1
         with:
@@ -52,7 +62,7 @@ jobs:
       - name: Query
         run: |
           set +e
-          "$RUNNER_TEMP/scope" query 'SELECT 1 AS ready'
+          scope query 'SELECT 1 AS ready'
           code=$?
           echo "scope query exit code: $code"
           exit "$code"
@@ -60,7 +70,7 @@ jobs:
       - name: List databases
         run: |
           set +e
-          "$RUNNER_TEMP/scope" catalog list databases
+          scope catalog list databases
           code=$?
           echo "scope catalog list databases exit code: $code"
           exit "$code"
@@ -68,7 +78,7 @@ jobs:
       - name: Doctor
         run: |
           set +e
-          "$RUNNER_TEMP/scope" doctor
+          scope doctor
           code=$?
           echo "scope doctor exit code: $code"
 
@@ -84,8 +94,18 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Build scope
-        run: go build -o "$RUNNER_TEMP/scope" ./cmd/scope
+      - name: Install scope v0.3.0
+        run: |
+          set -euo pipefail
+          if curl -fsSL "https://github.com/scopedb/scopedb-cli/releases/download/v0.3.0/scope_0.3.0_linux_amd64.tar.gz" | tar -xz -C "$RUNNER_TEMP"; then
+            echo "Installed scope from the v0.3.0 release archive."
+          else
+            echo "The v0.3.0 release archive is not published yet; building from the v0.3.0 tag."
+            git clone --depth 1 --branch v0.3.0 https://github.com/scopedb/scopedb-cli "$RUNNER_TEMP/scopedb-cli"
+            (cd "$RUNNER_TEMP/scopedb-cli" && go build -o "$RUNNER_TEMP/scope" ./cmd/scope)
+          fi
+          sudo install -m 0755 "$RUNNER_TEMP/scope" /usr/local/bin/scope
+          scope version
 
       - uses: scopedb/login-action@v1
         with:
@@ -93,7 +113,7 @@ jobs:
 
       - name: Query must fail
         run: |
-          output=$("$RUNNER_TEMP/scope" query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
+          output=$(scope query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope query exit code: $code"
           if [[ $code -eq 0 ]]; then
@@ -103,7 +123,7 @@ jobs:
 
       - name: List databases must fail
         run: |
-          output=$("$RUNNER_TEMP/scope" catalog list databases 2>&1) && code=0 || code=$?
+          output=$(scope catalog list databases 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope catalog list databases exit code: $code"
           if [[ $code -eq 0 ]]; then
@@ -114,6 +134,6 @@ jobs:
       - name: Doctor
         run: |
           set +e
-          "$RUNNER_TEMP/scope" doctor
+          scope doctor
           code=$?
           echo "scope doctor exit code: $code"
