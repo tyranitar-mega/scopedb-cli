@@ -16,9 +16,12 @@
 # staging job's subject (repo:tyranitar-mega/scopedb-cli:environment:staging)
 # must have a matching OpenID Connect trust policy in the workspace's Console
 # settings, so its commands must succeed. The production subject deliberately
-# has none, so its commands must be rejected. Every step prints the command's
-# exit code, and doctor steps never fail the workflow: they report the code and
-# the check table for inspection.
+# has none, so its commands must be rejected; the steps assert exit code 3 so
+# only the trust-policy rejection counts, not any other failure. Every step
+# prints the command's exit code, and doctor steps never fail the workflow:
+# they report the code and the check table for inspection. Because pull_request
+# runs grant id-token: write, the staging and production GitHub environments
+# should use protection rules to gate which runs may mint a token.
 name: OIDC example
 
 on:
@@ -111,23 +114,23 @@ jobs:
         with:
           workspace-id: "6ef0e720a1e3"
 
-      - name: Query must fail
+      - name: Query must be rejected
         run: |
           output=$(scope query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope query exit code: $code"
-          if [[ $code -eq 0 ]]; then
-            echo "::error::scope query succeeded but must be rejected"
+          if [[ $code -ne 3 ]]; then
+            echo "::error::scope query must exit 3 (OIDC token rejected), got $code"
             exit 1
           fi
 
-      - name: List databases must fail
+      - name: List databases must be rejected
         run: |
           output=$(scope catalog list databases 2>&1) && code=0 || code=$?
           echo "$output"
           echo "scope catalog list databases exit code: $code"
-          if [[ $code -eq 0 ]]; then
-            echo "::error::scope catalog list databases succeeded but must be rejected"
+          if [[ $code -ne 3 ]]; then
+            echo "::error::scope catalog list databases must exit 3 (OIDC token rejected), got $code"
             exit 1
           fi
 
