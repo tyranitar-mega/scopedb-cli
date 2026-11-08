@@ -1,0 +1,144 @@
+# Copyright 2026 ScopeDB, Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Dogfoods OIDC sign-in for data commands through scopedb/login-action. The
+# staging job's subject (repo:tyranitar-mega/scopedb-cli:environment:staging)
+# must have a matching OpenID Connect trust policy in the workspace's Console
+# settings, so its commands must succeed. The production subject deliberately
+# has none, so its commands must be rejected; the steps assert exit code 3 and
+# the "OIDC token was rejected" message, so only the trust-policy rejection
+# counts, not any other failure. Every step
+# prints the command's exit code, and doctor steps never fail the workflow:
+# they report the code and the check table for inspection. Because pull_request
+# runs grant id-token: write, the staging and production GitHub environments
+# should use protection rules to gate which runs may mint a token.
+name: OIDC example
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  staging:
+    name: OIDC sign-in succeeds (staging)
+    runs-on: ubuntu-24.04
+    environment: staging
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install scope v0.3.0
+        run: |
+          set -euo pipefail
+          if curl -fsSL "https://github.com/scopedb/scopedb-cli/releases/download/v0.3.0/scope_0.3.0_linux_amd64.tar.gz" | tar -xz -C "$RUNNER_TEMP"; then
+            echo "Installed scope from the v0.3.0 release archive."
+          else
+            echo "The v0.3.0 release archive is not published yet; building from the v0.3.0 tag."
+            git clone --depth 1 --branch v0.3.0 https://github.com/scopedb/scopedb-cli "$RUNNER_TEMP/scopedb-cli"
+            (cd "$RUNNER_TEMP/scopedb-cli" && go build -o "$RUNNER_TEMP/scope" ./cmd/scope)
+          fi
+          sudo install -m 0755 "$RUNNER_TEMP/scope" /usr/local/bin/scope
+          scope version
+
+      - uses: scopedb/login-action@v1
+        with:
+          workspace-id: "6ef0e720a1e3"
+
+      - name: Query
+        run: |
+          set +e
+          scope query 'SELECT 1 AS ready'
+          code=$?
+          echo "scope query exit code: $code"
+          exit "$code"
+
+      - name: List databases
+        run: |
+          set +e
+          scope catalog list databases
+          code=$?
+          echo "scope catalog list databases exit code: $code"
+          exit "$code"
+
+      - name: Doctor
+        run: |
+          set +e
+          scope doctor
+          code=$?
+          echo "scope doctor exit code: $code"
+
+  production:
+    name: OIDC sign-in rejected (production)
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Install scope v0.3.0
+        run: |
+          set -euo pipefail
+          if curl -fsSL "https://github.com/scopedb/scopedb-cli/releases/download/v0.3.0/scope_0.3.0_linux_amd64.tar.gz" | tar -xz -C "$RUNNER_TEMP"; then
+            echo "Installed scope from the v0.3.0 release archive."
+          else
+            echo "The v0.3.0 release archive is not published yet; building from the v0.3.0 tag."
+            git clone --depth 1 --branch v0.3.0 https://github.com/scopedb/scopedb-cli "$RUNNER_TEMP/scopedb-cli"
+            (cd "$RUNNER_TEMP/scopedb-cli" && go build -o "$RUNNER_TEMP/scope" ./cmd/scope)
+          fi
+          sudo install -m 0755 "$RUNNER_TEMP/scope" /usr/local/bin/scope
+          scope version
+
+      - uses: scopedb/login-action@v1
+        with:
+          workspace-id: "6ef0e720a1e3"
+
+      - name: Query must be rejected
+        run: |
+          output=$(scope query 'SELECT 1 AS ready' 2>&1) && code=0 || code=$?
+          echo "$output"
+          echo "scope query exit code: $code"
+          # Exit code 3 also covers "not logged in", so the message proves the OIDC path ran and was rejected.
+          if [[ $code -ne 3 ]] || ! grep -q "the OIDC token was rejected" <<< "$output"; then
+            echo "::error::scope query must exit 3 with an OIDC rejection, got $code"
+            exit 1
+          fi
+
+      - name: List databases must be rejected
+        run: |
+          output=$(scope catalog list databases 2>&1) && code=0 || code=$?
+          echo "$output"
+          echo "scope catalog list databases exit code: $code"
+          if [[ $code -ne 3 ]] || ! grep -q "the OIDC token was rejected" <<< "$output"; then
+            echo "::error::scope catalog list databases must exit 3 with an OIDC rejection, got $code"
+            exit 1
+          fi
+
+      - name: Doctor
+        run: |
+          set +e
+          scope doctor
+          code=$?
+          echo "scope doctor exit code: $code"
